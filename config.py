@@ -3,6 +3,9 @@
 Loads environment variables from .env, validates required keys,
 defines all project-wide constants, and provides logging setup.
 Every other module imports constants and AppConfig from here.
+
+Reddit data is fetched via the public Reddit JSON API — no credentials
+required. All other external services require API keys set in .env.
 """
 
 from __future__ import annotations
@@ -52,6 +55,12 @@ NEWSAPI_BASE_URL: str = "https://newsapi.org/v2"
 EDGAR_SUBMISSIONS_URL: str = "https://data.sec.gov/submissions"
 EDGAR_SEARCH_URL: str = "https://efts.sec.gov/LATEST/search-index"
 
+# Reddit public JSON API — no credentials required.
+# Reddit requires a descriptive User-Agent or it may throttle requests.
+REDDIT_BASE_URL: str = "https://www.reddit.com"
+REDDIT_USER_AGENT: str = "stock-sentiment-engine/1.0 (research tool)"
+REDDIT_REQUEST_DELAY: float = 0.6  # seconds between requests to stay within ~1 req/sec
+
 
 # ─── AppConfig ────────────────────────────────────────────────────────────────
 
@@ -62,10 +71,12 @@ class AppConfig:
         anthropic_api_key: Anthropic API key for Claude.
         finnhub_api_key: Finnhub market data API key.
         news_api_key: NewsAPI key.
-        reddit_client_id: Reddit OAuth client ID.
-        reddit_client_secret: Reddit OAuth client secret.
-        reddit_user_agent: Reddit API user agent string.
         edgar_user_agent: SEC EDGAR User-Agent header value.
+
+    Note:
+        Reddit data is fetched via the public JSON API — no credentials
+        are needed. Reddit constants (REDDIT_BASE_URL, REDDIT_USER_AGENT)
+        are module-level constants in config.py, not AppConfig fields.
     """
 
     def __init__(
@@ -73,17 +84,11 @@ class AppConfig:
         anthropic_api_key: str,
         finnhub_api_key: str,
         news_api_key: str,
-        reddit_client_id: str,
-        reddit_client_secret: str,
-        reddit_user_agent: str,
         edgar_user_agent: str,
     ) -> None:
         self.anthropic_api_key = anthropic_api_key
         self.finnhub_api_key = finnhub_api_key
         self.news_api_key = news_api_key
-        self.reddit_client_id = reddit_client_id
-        self.reddit_client_secret = reddit_client_secret
-        self.reddit_user_agent = reddit_user_agent
         self.edgar_user_agent = edgar_user_agent
 
 
@@ -107,8 +112,6 @@ def load_config() -> AppConfig:
         "ANTHROPIC_API_KEY": "Anthropic API key (https://console.anthropic.com)",
         "FINNHUB_API_KEY": "Finnhub API key (https://finnhub.io)",
         "NEWS_API_KEY": "NewsAPI key (https://newsapi.org)",
-        "REDDIT_CLIENT_ID": "Reddit client ID (https://www.reddit.com/prefs/apps)",
-        "REDDIT_CLIENT_SECRET": "Reddit client secret",
         "EDGAR_USER_AGENT": (
             "EDGAR User-Agent string (e.g. 'stock-sentiment-engine/1.0 you@example.com')"
         ),
@@ -127,19 +130,10 @@ def load_config() -> AppConfig:
         )
         raise SystemExit(2)
 
-    # REDDIT_USER_AGENT is optional — hardcoded default if not set
-    reddit_user_agent = os.getenv(
-        "REDDIT_USER_AGENT",
-        "stock-sentiment-engine/1.0 by u/yourusername",
-    ).strip()
-
     return AppConfig(
         anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
         finnhub_api_key=os.environ["FINNHUB_API_KEY"],
         news_api_key=os.environ["NEWS_API_KEY"],
-        reddit_client_id=os.environ["REDDIT_CLIENT_ID"],
-        reddit_client_secret=os.environ["REDDIT_CLIENT_SECRET"],
-        reddit_user_agent=reddit_user_agent,
         edgar_user_agent=os.environ["EDGAR_USER_AGENT"],
     )
 

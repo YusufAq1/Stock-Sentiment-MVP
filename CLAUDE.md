@@ -19,7 +19,7 @@ You run `python analyze.py AAPL`, it fetches all available data, sends it to Cla
 - **LLM**: Anthropic Claude API (`claude-sonnet-4-5-20250929` for analysis)
 - **Market Data**: `yfinance` for price data + earnings info
 - **News Sources**: Finnhub News API, NewsAPI
-- **Social Sentiment**: Reddit via PRAW (`r/wallstreetbets`, `r/stocks`, `r/investing`, `r/options`)
+- **Social Sentiment**: Reddit via the **public Reddit JSON API** — no credentials required (`r/wallstreetbets`, `r/stocks`, `r/investing`, `r/options`)
 - **SEC Filings**: SEC EDGAR API (free, no key required)
 - **HTTP Client**: `httpx` for all external API calls (async-capable, but used synchronously in MVP for simplicity)
 - **Terminal Output**: `rich` library for colored, formatted terminal display
@@ -30,7 +30,7 @@ You run `python analyze.py AAPL`, it fetches all available data, sends it to Cla
 ### Key Tech Decisions
 
 - **No database** — all data is ephemeral or file-cached. This is a CLI tool, not a server.
-- **No async** — keep it simple. Synchronous Python with `httpx` (sync client) and PRAW. Fetchers run sequentially or with `concurrent.futures.ThreadPoolExecutor` for parallelism where beneficial.
+- **No async** — keep it simple. Synchronous Python with `httpx` (sync client). Fetchers run sequentially or with `concurrent.futures.ThreadPoolExecutor` for parallelism where beneficial.
 - **No web framework** — no FastAPI, no Flask, no Streamlit. Just a Python script you run from the terminal.
 - **Single Claude API call** — all fetched data is bundled into one structured prompt and sent in a single call to Claude. This is cheaper and produces better holistic analysis than per-article scoring.
 
@@ -49,7 +49,7 @@ stock-sentiment-engine/
 ├── fetchers/                   # Data fetching from external sources
 │   ├── __init__.py
 │   ├── news.py                 # Finnhub + NewsAPI article fetching
-│   ├── reddit.py               # PRAW — search across 4 subreddits
+│   ├── reddit.py               # Reddit JSON API — search across 4 subreddits (no auth)
 │   ├── sec.py                  # SEC EDGAR — recent filings (10-K, 10-Q, 8-K)
 │   ├── price.py                # yfinance — OHLCV, current price, key stats
 │   └── earnings.py             # yfinance — next earnings date, recent surprise
@@ -84,17 +84,17 @@ ANTHROPIC_API_KEY=sk-ant-api03-...
 FINNHUB_API_KEY=...
 NEWS_API_KEY=...
 
-# Reddit — Required
-REDDIT_CLIENT_ID=...
-REDDIT_CLIENT_SECRET=...
-REDDIT_USER_AGENT=stock-sentiment-engine/1.0 by u/yourusername
+# SEC EDGAR — Required (no key needed, just a contact User-Agent)
+EDGAR_USER_AGENT=stock-sentiment-engine/1.0 your@email.com
 ```
+
+Reddit requires **no credentials** — data is fetched via the public JSON API using `httpx`.
 
 Create a `.env.example` file with all keys shown as empty placeholders and comments explaining where to get each one:
 - Anthropic: https://console.anthropic.com → API Keys
 - Finnhub: https://finnhub.io → Free API key
 - NewsAPI: https://newsapi.org → Register for free key
-- Reddit: https://www.reddit.com/prefs/apps → Create "script" type app
+- EDGAR User-Agent: any string in the format `appname/version contact@email.com`
 
 ## CLI Interface
 
@@ -185,16 +185,19 @@ Use `concurrent.futures.ThreadPoolExecutor` to run fetchers in parallel where po
 - Return as a list of article dicts
 
 **Reddit Fetcher** (`fetchers/reddit.py`):
-- Initialize PRAW in **read-only mode** (no username/password needed, just client_id, client_secret, user_agent)
-- Search each of these subreddits for the ticker symbol: `wallstreetbets`, `stocks`, `investing`, `options`
+- Uses the **public Reddit JSON API** via `httpx` — no credentials or API keys required
+- Endpoint: `GET https://www.reddit.com/r/{subreddit}/search.json?q={ticker}&sort=relevance&t={time_filter}&limit=15&restrict_sr=1`
+- Search each of these subreddits: `wallstreetbets`, `stocks`, `investing`, `options`
 - For each subreddit:
-  - Use `subreddit.search(ticker, sort="relevance", time_filter="month", limit=15)` to find relevant posts
-  - For each post, extract: title, selftext (body), score, num_comments, created_utc, subreddit name, url
-  - Also fetch the top 3 comments (by score) from each post for additional sentiment context: comment body, score
-- Deduplicate posts by ID across subreddits (a post can appear in search results for multiple subs)
-- Sort by score descending (most popular first)
-- Cap at 30 posts maximum
-- Calculate basic stats: total mentions, average post score, total comments across all posts, subreddit breakdown
+  - Search for the ticker symbol (strip `.TO` suffix for TSX tickers)
+  - Extract: id, title, body (selftext), score, num_comments, created_utc, subreddit, url
+  - Fetch top 3 comments per post via `GET /r/{sub}/comments/{post_id}.json?sort=top&depth=1`
+- Set `User-Agent: stock-sentiment-engine/1.0 (research tool)` header — Reddit throttles requests without one
+- Add a 0.6-second delay between requests to respect Reddit's ~1 req/sec rate limit
+- `--days` value maps to Reddit time filters: ≤7 → `week`, ≤30 → `month`, else `year`
+- Deduplicate posts by ID across subreddits (a post can appear in multiple search results)
+- Sort by score descending and cap at 30 posts maximum
+- Calculate basic stats: total_posts, avg_score, total_comments, subreddit_breakdown
 - Return as a structured dict with both the posts list and summary stats
 
 **SEC Fetcher** (`fetchers/sec.py`):
@@ -475,7 +478,7 @@ Specific error handling per fetcher:
 - **yfinance**: if the ticker symbol doesn't resolve, exit with code 1 immediately
 - **Finnhub**: handle 429 (rate limit) with exponential backoff. Handle empty response for TSX tickers (Finnhub may not cover them — this is fine, not an error)
 - **NewsAPI**: handle 429 and 401 (invalid key). Handle zero results gracefully.
-- **PRAW**: handle `prawcore.exceptions.ResponseException` for auth failures. Handle zero search results gracefully.
+- **Reddit JSON API**: handle HTTP 429 (rate limited) by logging a warning and skipping that subreddit. Handle zero results or malformed JSON gracefully. The 0.6s delay between requests prevents hitting the rate limit in normal use.
 - **EDGAR**: handle 404 and connection errors. TSX tickers will always return empty — handle gracefully with a note.
 
 ## Coding Standards & Conventions
@@ -497,7 +500,7 @@ Specific error handling per fetcher:
 ### Rate Limits
 - **Finnhub free tier**: 60 calls/min — not an issue for single ticker, but add basic awareness
 - **NewsAPI free tier**: 100 requests/day — be conservative, one request per run is fine
-- **Reddit API (PRAW)**: 100 calls/min — search + fetching comments for 4 subreddits should be well within this
+- **Reddit public JSON API**: ~1 req/sec unofficial limit — the 0.6s inter-request delay keeps well within this. 4 subreddit searches + up to 30 comment fetches = ~34 requests per run (~20 seconds)
 - **Anthropic API**: depends on tier, but one call per run is minimal. Add retry with exponential backoff for 429s.
 - **SEC EDGAR**: 10 requests/sec — add a `User-Agent` header as required
 
@@ -524,7 +527,6 @@ Specific error handling per fetcher:
 ```
 anthropic>=0.43.0
 yfinance>=0.2.36
-praw>=7.7.0
 httpx>=0.27.0
 rich>=13.7.0
 jinja2>=3.1.0
@@ -538,7 +540,7 @@ Build these in order. Each step should be fully functional and testable before m
 1. **Project scaffolding**: Create directory structure, `requirements.txt`, `.env.example`, `.gitignore`, `config.py` with environment loading and validation
 2. **Price fetcher**: `fetchers/price.py` — fetch and structure price data via yfinance. Test with both US (`AAPL`) and TSX (`SHOP.TO`) tickers.
 3. **News fetcher**: `fetchers/news.py` — Finnhub + NewsAPI integration with deduplication. Test with a high-coverage ticker like `AAPL`.
-4. **Reddit fetcher**: `fetchers/reddit.py` — PRAW search across 4 subreddits. Test read-only mode.
+4. **Reddit fetcher**: `fetchers/reddit.py` — Reddit public JSON API search across 4 subreddits via `httpx`. No credentials needed.
 5. **SEC fetcher**: `fetchers/sec.py` — EDGAR integration. Test with US ticker, verify TSX graceful empty result.
 6. **Earnings fetcher**: `fetchers/earnings.py` — yfinance earnings data. Test with ticker that has upcoming earnings.
 7. **Caching system**: Implement file-based cache in each fetcher.

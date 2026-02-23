@@ -3,6 +3,8 @@
 Fixtures defined here are automatically available to all test modules
 without any explicit import. Add mock API response fixtures here as
 each fetcher is built (Steps 3–6).
+
+Reddit data is fetched via the public JSON API — no auth fixtures needed.
 """
 
 from __future__ import annotations
@@ -60,5 +62,53 @@ def mock_price_data() -> dict:
                 "volume": 58_000_000,
             }
         ],
+        "fetch_timestamp": "2026-02-22T20:00:00+00:00",
+    }
+
+
+@pytest.fixture
+def mock_reddit_data() -> dict:
+    """Canonical Reddit data dict matching the fetch_reddit return schema.
+
+    Used as the source of truth for the expected shape of fetch_reddit
+    output. Referenced in test_fetchers.py and test_formatter.py.
+    """
+    return {
+        "ticker": "AAPL",
+        "posts": [
+            {
+                "id": "abc123",
+                "title": "AAPL earnings beat — what's everyone's take?",
+                "body": "Apple just crushed Q1 estimates. EPS beat by 5%, revenue up 6% YoY.",
+                "score": 1523,
+                "num_comments": 342,
+                "created_utc": 1737590400.0,
+                "subreddit": "wallstreetbets",
+                "url": "https://www.reddit.com/r/wallstreetbets/comments/abc123/",
+                "top_comments": [
+                    {"body": "Been holding since $150, not selling.", "score": 412},
+                    {"body": "Services revenue is the real story here.", "score": 287},
+                ],
+            },
+            {
+                "id": "def456",
+                "title": "Is AAPL still a buy at these levels?",
+                "body": "P/E is getting stretched but the buyback machine keeps running.",
+                "score": 634,
+                "num_comments": 89,
+                "created_utc": 1737504000.0,
+                "subreddit": "stocks",
+                "url": "https://www.reddit.com/r/stocks/comments/def456/",
+                "top_comments": [
+                    {"body": "Valuation is rich but quality commands a premium.", "score": 95},
+                ],
+            },
+        ],
+        "stats": {
+            "total_posts": 2,
+            "avg_score": 1078.5,
+            "total_comments": 431,
+            "subreddit_breakdown": {"wallstreetbets": 1, "stocks": 1},
+        },
         "fetch_timestamp": "2026-02-22T20:00:00+00:00",
     }
