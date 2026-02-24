@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ ticker }} — Stock Sentiment Report</title>
+  <style>
+    /* ── Reset & Variables ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --surface2: #21262d;
+      --border:   #30363d;
+      --text:     #e6edf3;
+      --muted:    #7d8590;
+      --positive: #3fb950;
+      --neutral:  #d29922;
+      --negative: #f85149;
+      --accent:   #58a6ff;
+      --signal:   #79c0ff;
+      --radius:   8px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 24px 16px 48px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    a { color: var(--accent); text-decoration: none; }
+
+    /* ── Utility ─────────────────────────────────────────────────────────── */
+    .positive { color: var(--positive); }
+    .negative { color: var(--negative); }
+    .neutral  { color: var(--neutral);  }
+    .muted    { color: var(--muted);    }
+    .bold     { font-weight: 600; }
+    .mono     { font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; }
+
+    /* ── Cards ───────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* ── Grid Helpers ────────────────────────────────────────────────────── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .stack  { display: flex; flex-direction: column; gap: 16px; }
+
+    /* ── Header ──────────────────────────────────────────────────────────── */
+    .header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+    }
+    .header h1 { font-size: 26px; font-weight: 700; }
+    .header .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .header .price-headline {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+
+    /* ── Price Grid ──────────────────────────────────────────────────────── */
+    .price-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .price-item .label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+    .price-item .value { font-size: 15px; font-weight: 600; }
+
+    /* ── Sentiment Gauge ─────────────────────────────────────────────────── */
+    .gauge-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .gauge-label { width: 70px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+    .gauge-track {
+      flex: 1;
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .gauge-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .gauge-score { width: 48px; text-align: right; font-size: 13px; font-weight: 600; font-family: monospace; }
+
+    /* ── Lists ───────────────────────────────────────────────────────────── */
+    .bullet-list { list-style: none; padding: 0; }
+    .bullet-list li { padding: 4px 0; padding-left: 16px; position: relative; }
+    .bullet-list li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--muted);
+    }
+    .bullet-list.positive li::before { color: var(--positive); }
+    .bullet-list.negative li::before { color: var(--negative); }
+
+    /* ── Badge ───────────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge.positive { background: rgba(63,185,80,.15); color: var(--positive); }
+    .badge.negative { background: rgba(248,81,73,.15);  color: var(--negative); }
+    .badge.neutral  { background: rgba(210,153,34,.15); color: var(--neutral);  }
+    .badge.muted    { background: var(--surface2);      color: var(--muted);    }
+
+    /* ── OHLCV Table ─────────────────────────────────────────────────────── */
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th {
+      text-align: left;
+      padding: 6px 8px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td { padding: 5px 8px; border-bottom: 1px solid var(--surface2); }
+    tr:last-child td { border-bottom: none; }
+    th:not(:first-child), td:not(:first-child) { text-align: right; }
+
+    /* ── Verdict ─────────────────────────────────────────────────────────── */
+    .verdict-text {
+      font-size: 15px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      color: var(--text);
+    }
+
+    /* ── Technical / Preformatted text ───────────────────────────────────── */
+    .preformatted {
+      white-space: pre-wrap;
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    /* ── Signal items ────────────────────────────────────────────────────── */
+    .signal-item {
+      display: flex;
+      gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--surface2);
+    }
+    .signal-item:last-child { border-bottom: none; }
+    .signal-arrow { color: var(--signal); flex-shrink: 0; }
+
+    /* ── Discrepancy items ───────────────────────────────────────────────── */
+    .disc-item {
+      display: flex;
+      gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--surface2);
+    }
+    .disc-item:last-child { border-bottom: none; }
+    .disc-icon { color: var(--neutral); flex-shrink: 0; }
+
+    /* ── Red flags ───────────────────────────────────────────────────────── */
+    .flag-item {
+      display: flex;
+      gap: 8px;
+      padding: 4px 0;
+      color: var(--negative);
+    }
+
+    /* ── Disclaimer ──────────────────────────────────────────────────────── */
+    .disclaimer {
+      margin-top: 32px;
+      padding: 12px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 12px;
+      color: var(--muted);
+      font-style: italic;
+      text-align: center;
+    }
+
+    /* ── Section spacing ─────────────────────────────────────────────────── */
+    section { margin-bottom: 16px; }
+
+    /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+{% if parse_error %}
+<!-- Parse error fallback -->
+<div class="card">
+  <div class="card-title">⚠ LLM Response (JSON parse failed)</div>
+  <pre style="white-space:pre-wrap;font-size:12px;color:var(--muted)">{{ raw_response }}</pre>
+</div>
+{% else %}
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<div class="header">
+  <h1>{{ ticker }} — {{ company_name }}</h1>
+  <div class="meta">{{ sector }} · {{ industry }} · {{ currency }} · {{ date }}</div>
+  <div class="price-headline">
+    {{ price_str }}
+    <span class="{{ change_class }}" style="font-size:18px;font-weight:400;margin-left:12px;">{{ change_str }}</span>
+  </div>
+</div>
+
+<!-- ── Row 1: Price Snapshot + Sentiment ──────────────────────────────── -->
+<section class="grid-2">
+
+  <!-- Price Snapshot -->
+  <div class="card">
+    <div class="card-title">Price Snapshot</div>
+    <div class="price-grid">
+      <div class="price-item">
+        <div class="label">52-Week Range</div>
+        <div class="value">{{ range_str }}</div>
+      </div>
+      <div class="price-item">
+        <div class="label">Market Cap</div>
+        <div class="value">{{ mcap_str }}</div>
+      </div>
+      <div class="price-item">
+        <div class="label">Trailing P/E</div>
+        <div class="value">{{ pe_str }}</div>
+      </div>
+      <div class="price-item">
+        <div class="label">Avg Vol (10d)</div>
+        <div class="value">{{ vol_str }}</div>
+      </div>
+      <div class="price-item">
+        <div class="label">Beta</div>
+        <div class="value">{{ beta_str }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sentiment Gauge -->
+  <div class="card">
+    <div class="card-title">
+      Sentiment Gauge &nbsp;
+      <span class="badge {% if overall_score >= 0.1 %}positive{% elif overall_score <= -0.1 %}negative{% else %}neutral{% endif %}">
+        {{ overall_label }}
+      </span>
+      <span class="muted" style="font-size:11px;margin-left:8px;">Confidence: {{ overall_confidence }}%</span>
+    </div>
+
+    <div class="gauge-row">
+      <span class="gauge-label">Overall</span>
+      <div class="gauge-track">
+        <div class="gauge-fill" style="width:{{ overall_pct }}%;background:{{ overall_colour }};"></div>
+      </div>
+      <span class="gauge-score" style="color:{{ overall_colour }}">{{ "%+.2f"|format(overall_score) }}</span>
+    </div>
+    <div class="gauge-row">
+      <span class="gauge-label">News</span>
+      <div class="gauge-track">
+        <div class="gauge-fill" style="width:{{ news_pct }}%;background:{{ news_colour }};"></div>
+      </div>
+      <span class="gauge-score" style="color:{{ news_colour }}">{{ "%+.2f"|format(news_score) }}</span>
+    </div>
+    <div class="gauge-row">
+      <span class="gauge-label">Reddit</span>
+      <div class="gauge-track">
+        <div class="gauge-fill" style="width:{{ reddit_pct }}%;background:{{ reddit_colour }};"></div>
+      </div>
+      <span class="gauge-score" style="color:{{ reddit_colour }}">{{ "%+.2f"|format(reddit_score) }}</span>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── Row 2: Bull / Bear ─────────────────────────────────────────────── -->
+<section class="grid-2">
+  <div class="card">
+    <div class="card-title" style="color:var(--positive)">Bull Case</div>
+    <ul class="bullet-list positive">
+      {% for point in bull_case %}
+      <li>{{ point }}</li>
+      {% else %}
+      <li class="muted">No bull case data.</li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-title" style="color:var(--negative)">Bear Case</div>
+    <ul class="bullet-list negative">
+      {% for point in bear_case %}
+      <li>{{ point }}</li>
+      {% else %}
+      <li class="muted">No bear case data.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+<!-- ── Row 3: News + Reddit ───────────────────────────────────────────── -->
+<section class="grid-2">
+
+  <div class="card">
+    <div class="card-title">News Summary <span class="muted">({{ news_count }} articles)</span></div>
+    <p>{{ news_summary }}</p>
+    {% if key_articles %}
+    <div style="margin-top:12px;">
+      <div class="card-title" style="margin-bottom:6px;">Key Articles</div>
+      <ul class="bullet-list">
+        {% for article in key_articles %}
+        <li>{{ article }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      Reddit Pulse <span class="muted">({{ reddit_count }} posts)</span>
+      {% if reddit_mood != "N/A" %}
+      &nbsp;<span class="badge neutral">{{ reddit_mood }}</span>
+      {% endif %}
+    </div>
+    <p>{{ reddit_summary }}</p>
+    {% if notable_posts %}
+    <div style="margin-top:12px;">
+      <div class="card-title" style="margin-bottom:6px;">Notable Posts</div>
+      <ul class="bullet-list">
+        {% for post in notable_posts %}
+        <li>{{ post }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+
+</section>
+
+<!-- ── Row 4: SEC Filings + Earnings ─────────────────────────────────── -->
+<section class="grid-2">
+
+  <div class="card">
+    <div class="card-title">SEC Filings <span class="muted">({{ filing_count }} recent)</span></div>
+    <p>{{ sec_summary }}</p>
+    {% if red_flags %}
+    <div style="margin-top:10px;">
+      {% for flag in red_flags %}
+      <div class="flag-item"><span>⚠</span><span>{{ flag }}</span></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">Earnings</div>
+    <div style="margin-bottom:10px;">
+      <span class="bold">Last quarter: </span>
+      <span class="badge {{ beat_class }}">{{ beat_or_miss }}</span>
+      {% if days_until_next is not none %}
+      <span class="muted" style="margin-left:10px;font-size:12px;">{{ days_until_next }} days until next</span>
+      {% endif %}
+    </div>
+    <p>{{ earnings_summary }}</p>
+  </div>
+
+</section>
+
+<!-- ── Discrepancies (conditional) ───────────────────────────────────── -->
+{% if discrepancies %}
+<section>
+  <div class="card" style="border-color: var(--neutral);">
+    <div class="card-title" style="color:var(--neutral)">Discrepancies</div>
+    {% for item in discrepancies %}
+    <div class="disc-item">
+      <span class="disc-icon">⚠</span>
+      <span>{{ item }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- ── Key Signals ────────────────────────────────────────────────────── -->
+{% if key_signals %}
+<section>
+  <div class="card">
+    <div class="card-title" style="color:var(--signal)">Key Signals &amp; Catalysts</div>
+    {% for signal in key_signals %}
+    <div class="signal-item">
+      <span class="signal-arrow">▸</span>
+      <span>{{ signal }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- ── Row 5: Technical + OHLCV ──────────────────────────────────────── -->
+<section class="grid-2">
+
+  <div class="card">
+    <div class="card-title">Technical Snapshot</div>
+    <div class="preformatted">{{ technical_snapshot }}</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Recent OHLCV (last 10 sessions)</div>
+    {% if ohlcv_rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Open</th>
+          <th>High</th>
+          <th>Low</th>
+          <th>Close</th>
+          <th>Volume</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in ohlcv_rows %}
+        <tr>
+          <td class="mono muted">{{ row.date }}</td>
+          <td class="mono">{{ row.open }}</td>
+          <td class="mono positive">{{ row.high }}</td>
+          <td class="mono negative">{{ row.low }}</td>
+          <td class="mono bold">{{ row.close }}</td>
+          <td class="mono muted">{{ row.volume }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No OHLCV data available.</p>
+    {% endif %}
+  </div>
+
+</section>
+
+<!-- ── Verdict ────────────────────────────────────────────────────────── -->
+<section>
+  <div class="card" style="border-color:var(--accent);">
+    <div class="card-title" style="color:var(--accent)">Verdict</div>
+    <div class="verdict-text">{{ verdict }}</div>
+  </div>
+</section>
+
+<!-- ── Data Quality (conditional) ────────────────────────────────────── -->
+{% if data_gaps or confidence_note %}
+<section>
+  <div class="card" style="border-color:var(--border);">
+    <div class="card-title">Data Quality</div>
+    {% if data_gaps %}
+    <ul class="bullet-list" style="margin-bottom:{{ '8px' if confidence_note else '0' }}">
+      {% for gap in data_gaps %}
+      <li class="muted">{{ gap }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if confidence_note %}
+    <p class="muted" style="font-style:italic;font-size:12px;">{{ confidence_note }}</p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% endif %}{# end parse_error else #}
+
+<!-- ── Disclaimer ────────────────────────────────────────────────────── -->
+<div class="disclaimer">{{ disclaimer }}</div>
+
+</body>
+</html>
