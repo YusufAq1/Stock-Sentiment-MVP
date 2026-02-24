@@ -112,3 +112,39 @@ def mock_reddit_data() -> dict:
         },
         "fetch_timestamp": "2026-02-22T20:00:00+00:00",
     }
+
+
+@pytest.fixture
+def mock_news_data() -> dict:
+    """Canonical news data dict matching the fetch_news return schema.
+
+    Used as the source of truth for the expected shape of fetch_news
+    output. Referenced in test_fetchers.py and test_formatter.py.
+    """
+    return {
+        "ticker": "AAPL",
+        "articles": [
+            {
+                "title": "Apple Reports Record Q1 Revenue of $124 Billion",
+                "summary": "Apple Inc. beat analyst expectations with record quarterly revenue driven by strong iPhone and Services growth.",
+                "source": "Reuters",
+                "url": "https://www.reuters.com/technology/apple-q1-results-2026",
+                "published_at": "2026-02-21T18:00:00+00:00",
+                "category": "technology",
+                "provider": "finnhub",
+            },
+            {
+                "title": "Apple's Services Segment Hits $26B in Quarterly Revenue",
+                "summary": "The high-margin Services division continues to be Apple's fastest-growing business unit.",
+                "source": "Bloomberg",
+                "url": "https://www.bloomberg.com/news/apple-services-2026",
+                "published_at": "2026-02-20T12:00:00+00:00",
+                "category": "",
+                "provider": "newsapi",
+            },
+        ],
+        "total_count": 2,
+        "finnhub_count": 1,
+        "newsapi_count": 1,
+        "fetch_timestamp": "2026-02-22T20:00:00+00:00",
+    }
