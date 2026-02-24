@@ -148,3 +148,65 @@ def mock_news_data() -> dict:
         "newsapi_count": 1,
         "fetch_timestamp": "2026-02-22T20:00:00+00:00",
     }
+
+
+@pytest.fixture
+def mock_sec_data() -> dict:
+    """Canonical SEC data dict matching the fetch_sec return schema.
+
+    Represents a US-listed ticker with one 8-K and one 10-Q filing.
+    """
+    return {
+        "ticker": "AAPL",
+        "filings": [
+            {
+                "form_type": "8-K",
+                "filing_date": "2026-02-01",
+                "description": "Current Report",
+                "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000001/0000320193-26-000001-index.htm",
+                "content": "Apple Inc. reported record first quarter results. Revenue was $124.3 billion, up 4% year over year.",
+            },
+            {
+                "form_type": "10-Q",
+                "filing_date": "2026-01-30",
+                "description": "Quarterly Report",
+                "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000002/0000320193-26-000002-index.htm",
+                "content": None,
+            },
+        ],
+        "is_us_listed": True,
+        "note": "",
+        "fetch_timestamp": "2026-02-22T20:00:00+00:00",
+    }
+
+
+@pytest.fixture
+def mock_sec_data_tsx() -> dict:
+    """SEC data dict for a TSX-listed ticker — empty filings, non-US note."""
+    return {
+        "ticker": "SHOP.TO",
+        "filings": [],
+        "is_us_listed": False,
+        "note": "No SEC filings (non-US listed security)",
+        "fetch_timestamp": "2026-02-22T20:00:00+00:00",
+    }
+
+
+@pytest.fixture
+def mock_earnings_data() -> dict:
+    """Canonical earnings data dict matching the fetch_earnings return schema."""
+    return {
+        "ticker": "AAPL",
+        "next_earnings_date": "2026-04-30",
+        "days_until_next": 67,
+        "last_quarter": {
+            "period": "2026-01-29",
+            "eps_estimate": 2.35,
+            "eps_actual": 2.40,
+            "eps_surprise_pct": 2.13,
+            "revenue_estimate": None,
+            "revenue_actual": None,
+            "beat_or_miss": "Beat",
+        },
+        "fetch_timestamp": "2026-02-22T20:00:00+00:00",
+    }
